@@ -1,0 +1,60 @@
+{
+  "name": "lm6029acw",
+  "version": "1.0.0",
+  "description": "Native addon (N-API) untuk LCD monokrom 128x64 LM6029ACW via SPI0 + 2x 74HC595 (render Adafruit_GFX).",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "binding.gyp",
+    "src/",
+    "examples/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install": "node-gyp rebuild",
+    "demo": "node examples/basic_demo.js",
+    "gfx": "node examples/test_gfx.js",
+    "ti84": "node examples/ti84.js",
+    "fps": "node examples/fps_test.js",
+    "spi": "node examples/spi_speed_test.js",
+    "contrast": "node examples/contrast_test.js"
+  },
+  "keywords": [
+    "lcd",
+    "lm6029",
+    "lm6029acw",
+    "monochrome",
+    "spi",
+    "spidev",
+    "raspberry-pi",
+    "74hc595",
+    "adafruit-gfx",
+    "napi",
+    "tsix"
+  ],
+  "author": "",
+  "license": "ISC",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/codeforged/lm6029acw.git"
+  },
+  "bugs": {
+    "url": "https://github.com/codeforged/lm6029acw/issues"
+  },
+  "homepage": "https://github.com/codeforged/lm6029acw#readme",
+  "os": [
+    "linux"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "gypfile": true,
+  "dependencies": {
+    "mathjs": "^15.2.0",
+    "node-addon-api": "^8.9.2"
+  }
+}

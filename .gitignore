@@ -1,0 +1,19 @@
+# ============================================================
+# raspi-lcd-addon — .gitignore
+# native addon: yang di-commit HANYA sumber, bukan hasil build.
+# ============================================================
+
+# --- Dependensi ---
+node_modules/
+
+# --- Artefak node-gyp (dibuat ulang oleh `npm install`) ---
+build/
+*.node
+*.o
+*.obj
+
+# --- Log & file OS ---
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
