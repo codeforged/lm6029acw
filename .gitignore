@@ -1,5 +1,5 @@
 # ============================================================
-# raspi-lcd-addon — .gitignore
+# lm6029acw — .gitignore
 # native addon: yang di-commit HANYA sumber, bukan hasil build.
 # ============================================================
 
@@ -11,6 +11,9 @@ build/
 *.node
 *.o
 *.obj
+
+# --- Hasil `npm pack` / publish (jangan sampai ikut ter-commit) ---
+*.tgz
 
 # --- Log & file OS ---
 *.log
