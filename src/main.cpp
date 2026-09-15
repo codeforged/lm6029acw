@@ -53,7 +53,12 @@ public:
             InstanceMethod("setDisplayOn", &LCDAddon::SetDisplayOn),
             InstanceMethod("isDisplayOn", &LCDAddon::IsDisplayOn),
             InstanceMethod("setSpiSpeed", &LCDAddon::SetSpiSpeed),
-            InstanceMethod("getSpiSpeed", &LCDAddon::GetSpiSpeed)
+            InstanceMethod("getSpiSpeed", &LCDAddon::GetSpiSpeed),
+
+            // --- Bus SPI (portabilitas antar-SBC) ---
+            InstanceMethod("setSpiDevice", &LCDAddon::SetSpiDevice),
+            InstanceMethod("getSpiDevicePath", &LCDAddon::GetSpiDevicePath),
+            InstanceMethod("getSpiProbeLog", &LCDAddon::GetSpiProbeLog)
         });
 
         exports.Set("LM6029LCD", func);
@@ -73,10 +78,42 @@ private:
 
     Napi::Value Begin(const Napi::CallbackInfo& info) {
         uint32_t speedHz = 0; // 0 = pakai default driver (10 MHz)
-        if (info.Length() > 0 && info[0].IsNumber()) {
-            speedHz = info[0].As<Napi::Number>().Uint32Value();
+
+        // Argumen fleksibel, urutan bebas:
+        //   begin()                          -> auto-deteksi bus + 10 MHz
+        //   begin(32000000)                  -> auto-deteksi bus + 32 MHz
+        //   begin('/dev/spidev3.0')          -> paksa bus (Orange Pi)
+        //   begin(32000000, '/dev/spidev3.0') -> keduanya
+        for (size_t i = 0; i < info.Length(); i++) {
+            if (info[i].IsNumber() && speedHz == 0) {
+                speedHz = info[i].As<Napi::Number>().Uint32Value();
+            } else if (info[i].IsString()) {
+                this->driver->setSpiDevice(info[i].As<Napi::String>().Utf8Value().c_str());
+            }
         }
         return Napi::Boolean::New(info.Env(), this->driver->begin(speedHz));
+    }
+
+    // setSpiDevice(path) -> paksa bus SPI tertentu (mis. '/dev/spidev3.0').
+    // Berlaku pada begin() berikutnya; '' = kembali ke auto-deteksi.
+    Napi::Value SetSpiDevice(const Napi::CallbackInfo& info) {
+        if (info.Length() > 0 && info[0].IsString()) {
+            this->driver->setSpiDevice(info[0].As<Napi::String>().Utf8Value().c_str());
+        } else {
+            this->driver->setSpiDevice(NULL);
+        }
+        return info.Env().Undefined();
+    }
+
+    // getSpiDevicePath() -> bus yang benar-benar dipakai ('' bila belum begin).
+    Napi::Value GetSpiDevicePath(const Napi::CallbackInfo& info) {
+        return Napi::String::New(info.Env(), this->driver->getSpiDevicePath());
+    }
+
+    // getSpiProbeLog() -> jejak percobaan open, mis.
+    // '/dev/spidev0.0 gagal, /dev/spidev3.0 ok'.
+    Napi::Value GetSpiProbeLog(const Napi::CallbackInfo& info) {
+        return Napi::String::New(info.Env(), this->driver->getSpiProbeLog());
     }
 
     Napi::Value ClearDisplay(const Napi::CallbackInfo& info) {

@@ -1,6 +1,6 @@
 {
   "name": "lm6029acw",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Native addon (N-API) untuk LCD monokrom 128x64 LM6029ACW via SPI0 + 2x 74HC595 (render Adafruit_GFX).",
   "main": "index.js",
   "files": [

@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <unistd.h>
+#include <string>
 #include "Adafruit_GFX.h" // Header Adafruit_GFX C++
 
 #define LCD_WIDTH   128
@@ -74,6 +75,20 @@ public:
     void setSpiSpeed(uint32_t hz);
     uint32_t getSpiSpeed() const { return _spiSpeedHz; }
 
+    // --- Bus SPI (portabilitas antar-SBC) ---
+    // Path spidev TIDAK sama antar board:
+    //   Raspberry Pi  -> /dev/spidev0.0
+    //   Orange Pi     -> /dev/spidev3.0
+    //   board lain    -> /dev/spidev1.0, /dev/spidev2.0, dst.
+    // Default "" = auto-deteksi saat begin(): coba preferensi -> /dev/spidev0.0
+    // -> sisa /dev/spidev* (urut lexicographic) dan pakai yang pertama bisa
+    // dibuka. Jadi satu binary yang sama jalan di Pi maupun Orange Pi.
+    void setSpiDevice(const char* path);
+    /** Bus yang benar-benar dipakai begin() ("" sebelum begin sukses). */
+    const char* getSpiDevicePath() const { return _spiDevicePath.c_str(); }
+    /** Rekap percobaan open terakhir (mis. "/dev/spidev0.0 gagal, /dev/spidev3.0 ok"). */
+    const char* getSpiProbeLog() const { return _spiProbeLog.c_str(); }
+
 private:
     int _spiFd;
     uint16_t _shiftRegState;
@@ -83,7 +98,11 @@ private:
     bool _displayInverted;
     bool _displayOn;
     uint32_t _spiSpeedHz;
+    std::string _spiDevicePref; // diminta user/env ("" = auto)
+    std::string _spiDevicePath; // hasil resolusi saat begin()
+    std::string _spiProbeLog;   // jejak percobaan open untuk log/error
 
+    int openSpiBus();
     void shiftOutDual74HC595(uint16_t value);
     void sendCommand(uint8_t cmd);
     void sendData(uint8_t data);

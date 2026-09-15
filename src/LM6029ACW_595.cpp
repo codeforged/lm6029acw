@@ -3,10 +3,14 @@
 #include <unistd.h>
 #include <sys/ioctl.h>
 #include <linux/spi/spidev.h>
+#include <glob.h>
+#include <algorithm>
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <vector>
 
-// Sesudah (Fix):
 LM6029ACW_595::LM6029ACW_595() : Adafruit_GFX(LCD_WIDTH, LCD_HEIGHT) {
     _spiFd = -1;
     _shiftRegState = 0;
@@ -15,6 +19,12 @@ LM6029ACW_595::LM6029ACW_595() : Adafruit_GFX(LCD_WIDTH, LCD_HEIGHT) {
     _displayInverted = false;
     _displayOn = true;
     _spiSpeedHz = 10000000; // 10 MHz
+
+    // Bus SPI berbeda antar board (Pi: /dev/spidev0.0, Orange Pi:
+    // /dev/spidev3.0). Bisa dipaksa lewat env LM6029_SPI_DEV; dibiarkan kosong
+    // berarti begin() yang mengauto-deteksi dari /dev/spidev*.
+    const char* envDev = getenv("LM6029_SPI_DEV");
+    _spiDevicePref = envDev ? envDev : "";
 }
 
 LM6029ACW_595::~LM6029ACW_595() {
@@ -26,8 +36,14 @@ bool LM6029ACW_595::begin(uint32_t speedHz) {
     // begin() versi lama dengan argumen pin) -> abaikan.
     if (speedHz >= 100000) _spiSpeedHz = speedHz;
 
-    // Buka device SPI Hardware Raspi
-    _spiFd = open("/dev/spidev0.0", O_RDWR);
+    // begin() boleh dipanggil ulang (hotplug) — jangan bocorkan FD lama.
+    if (_spiFd >= 0) {
+        close(_spiFd);
+        _spiFd = -1;
+    }
+
+    // Buka bus SPI yang tersedia; path-nya beda antar SBC (Pi vs Orange Pi).
+    _spiFd = openSpiBus();
     if (_spiFd < 0) return false;
 
     uint8_t mode = SPI_MODE_0;
@@ -57,6 +73,73 @@ bool LM6029ACW_595::begin(uint32_t speedHz) {
     clearDisplay();
     display();
     return true;
+}
+
+// ---------------------------------------------------------------------------
+// Pemilihan bus SPI (portabilitas antar-SBC)
+// ---------------------------------------------------------------------------
+
+// Paksa bus tertentu, mis. "/dev/spidev3.0" (Orange Pi). String kosong =
+// kembali ke auto-deteksi. Berlaku pada begin() berikutnya.
+void LM6029ACW_595::setSpiDevice(const char* path) {
+    if (path == NULL) {
+        _spiDevicePref.clear();
+        return;
+    }
+
+    std::string p(path);
+    // Buang spasi/baris baru yang ikut terbawa (env var, argumen CLI).
+    while (!p.empty() && isspace(static_cast<unsigned char>(p.front()))) p.erase(p.begin());
+    while (!p.empty() && isspace(static_cast<unsigned char>(p.back()))) p.pop_back();
+    _spiDevicePref = p;
+}
+
+// Cari bus SPI yang bisa dibuka. Urutan prioritas:
+//   1. preferensi eksplisit — setSpiDevice() atau env LM6029_SPI_DEV
+//   2. /dev/spidev0.0 — default Raspberry Pi
+//   3. sisa /dev/spidev* — urut lexicographic (Orange Pi: /dev/spidev3.0, dst.)
+// Path pertama yang berhasil dibuka dipakai (disimpan di _spiDevicePath).
+// Kalau bukan pilihan pertama, tulis alasannya ke stderr sekali — supaya
+// kelihatan saat pindah board. Set LM6029_SPI_DEV untuk memaksa bus tertentu.
+int LM6029ACW_595::openSpiBus() {
+    std::vector<std::string> candidates;
+    auto add = [&candidates](const std::string& p) {
+        if (p.empty()) return;
+        if (std::find(candidates.begin(), candidates.end(), p) == candidates.end())
+            candidates.push_back(p);
+    };
+
+    add(_spiDevicePref);
+    add("/dev/spidev0.0"); // Raspberry Pi
+
+    // Apa pun yang tersedia (Orange Pi 3.0, board lain 1.0/2.0, ...).
+    glob_t g;
+    if (glob("/dev/spidev*", 0, NULL, &g) == 0) {
+        for (size_t i = 0; i < g.gl_pathc; i++) add(g.gl_pathv[i]);
+        globfree(&g);
+    }
+
+    _spiProbeLog.clear();
+    for (size_t i = 0; i < candidates.size(); i++) {
+        int fd = open(candidates[i].c_str(), O_RDWR);
+        if (!_spiProbeLog.empty()) _spiProbeLog += ", ";
+        _spiProbeLog += candidates[i] + (fd >= 0 ? " ok" : " gagal");
+
+        if (fd >= 0) {
+            _spiDevicePath = candidates[i];
+            if (i > 0) {
+                std::cerr << "[lm6029acw] " << candidates[0]
+                          << " tidak tersedia - memakai " << _spiDevicePath
+                          << " (set LM6029_SPI_DEV untuk memaksa)" << std::endl;
+            }
+            return fd;
+        }
+    }
+
+    std::cerr << "[lm6029acw] tidak ada bus SPI yang bisa dibuka. Dicoba: "
+              << (_spiProbeLog.empty() ? "(tidak ada /dev/spidev*)" : _spiProbeLog)
+              << " — SPI/overlay sudah diaktifkan?" << std::endl;
+    return -1;
 }
 
 void LM6029ACW_595::shiftOutDual74HC595(uint16_t value) {

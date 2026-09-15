@@ -14,15 +14,17 @@ tidak pernah menyentuh addon ini langsung; mereka memakai
 
 | | |
 |---|---|
-| OS | **Linux** (memakai `/dev/spidev0.0`) |
-| Hardware | Raspberry Pi (atau SBC apa pun dengan spidev) + LCD LM6029ACW + 2× 74HC595 |
+| OS | **Linux** (memakai `spidev`; bus di-auto-deteksi dari `/dev/spidev*`) |
+| Hardware | Raspberry Pi / Orange Pi / SBC lain dengan spidev + LCD LM6029ACW + 2× 74HC595 |
 | Build | Node.js ≥ 18, `python3`, `make`, `g++` → `sudo apt install build-essential python3` |
-| SPI | harus diaktifkan (`sudo raspi-config` → Interface Options → SPI → Enable → reboot) |
+| SPI | harus diaktifkan (`sudo raspi-config` → Interface Options → SPI → Enable → reboot; di Orange Pi: `sudo orangepi-config` → Hardware → SPI) |
 
-Cek SPI sudah ada:
+Cek bus SPI yang tersedia:
 
 ```bash
-ls /dev/spidev0.0
+ls /dev/spidev*
+# Raspberry Pi : /dev/spidev0.0  /dev/spidev0.1
+# Orange Pi    : /dev/spidev3.0  (nomor bus berbeda!)
 ```
 
 ## Instalasi
@@ -51,9 +53,10 @@ const { LM6029LCD } = require('lm6029acw');
 
 const lcd = new LM6029LCD();
 if (!lcd.begin()) {
-  console.error('Gagal membuka /dev/spidev0.0 — SPI sudah di-enable?');
+  console.error('Gagal membuka bus SPI — SPI sudah di-enable?');
   process.exit(1);
 }
+console.log('SPI:', lcd.getSpiDevicePath());   // mis. /dev/spidev0.0 atau /dev/spidev3.0
 
 lcd.setContrast(40);          // 0 (pudar) .. 63 (paling tajam)
 lcd.setBacklight(true);
@@ -71,7 +74,10 @@ lcd.display();                // flush buffer → panel
 ### Lifecycle
 | Fungsi | Keterangan |
 |---|---|
-| `begin(speedHz?)` | Buka `/dev/spidev0.0` + init controller. `speedHz` opsional (default 10 MHz). Return `boolean`. |
+| `begin(speedHz?, devicePath?)` | Buka bus SPI (auto-deteksi bila `devicePath` kosong) + init controller. `speedHz` default 10 MHz; urutan argumen bebas (`begin('/dev/spidev3.0')` juga boleh). Return `boolean`. |
+| `setSpiDevice(path)` | Paksa bus tertentu untuk `begin()` berikutnya; `''` = kembali auto-deteksi. |
+| `getSpiDevicePath()` | Bus yang benar-benar dipakai (`''` bila belum `begin()`). |
+| `getSpiProbeLog()` | Jejak percobaan open, mis. `/dev/spidev0.0 gagal, /dev/spidev3.0 ok`. |
 | `clear()` / `clearDisplay()` | Bersihkan buffer (belum tampil). |
 | `display()` | Kirim buffer ke panel. |
 | `getWidth()` / `getHeight()` | 128 / 64 (ikut rotasi). |
@@ -106,6 +112,49 @@ lcd.display();                // flush buffer → panel
 | `setSpiSpeed(hz)` / `getSpiSpeed()` | kecepatan SPI efektif |
 | `setRotation(0..3)` | rotasi tampilan |
 
+## Bus SPI: Raspberry Pi vs Orange Pi
+
+Nomor bus SPI **berbeda antar board** dan tidak bisa diasumsikan:
+
+| Board | Path tipikal |
+|---|---|
+| Raspberry Pi (SPI0) | `/dev/spidev0.0` |
+| Orange Pi (SPI3) | `/dev/spidev3.0` |
+| Board lain | `/dev/spidev1.0`, `/dev/spidev2.0`, … |
+
+Karena itu addon **tidak meng-hardcode** path. Saat `begin()` ia mencoba
+berurutan dan memakai yang pertama bisa dibuka:
+
+1. bus eksplisit — `setSpiDevice()` / `begin(…, path)` / env `LM6029_SPI_DEV`
+2. `/dev/spidev0.0` (default Raspberry Pi)
+3. sisa `/dev/spidev*` urut lexicographic (menemukan `/dev/spidev3.0` di Orange Pi)
+
+Jadi **satu binary yang sama jalan di Pi maupun Orange Pi tanpa konfigurasi**.
+Kalau jatuh ke pilihan 2/3, addon menulis satu baris peringatan ke `stderr`
+supaya kelihatan board mana yang sedang dipakai.
+
+Memaksa bus tertentu (kalau auto-deteksi memilih bus yang salah — mis. board
+dengan beberapa spidev dan panel Anda di bus kedua):
+
+```bash
+# 1. lewat env (paling praktis untuk service/daemon)
+LM6029_SPI_DEV=/dev/spidev3.0 npm run demo
+
+# 2. lewat API
+```
+
+```js
+const lcd = new LM6029LCD();
+lcd.setSpiDevice('/dev/spidev3.0');   // atau: lcd.begin(10000000, '/dev/spidev3.0')
+lcd.begin();
+console.log(lcd.getSpiDevicePath());  // /dev/spidev3.0
+```
+
+> Auto-deteksi hanya memilih bus yang **bisa dibuka** — ia tidak bisa tahu di
+> bus mana panel benar-benar terpasang. Kalau layar tetap kosong padahal
+> `begin()` sukses, cek urutan bus dengan `getSpiProbeLog()` lalu paksa path
+> yang benar.
+
 ## Contoh
 
 Jalankan dari root project:
@@ -137,7 +186,8 @@ Node.js (JS)              C++ (addon)                    Hardware
 ─────────────             ───────────                    ────────
 LM6029LCD  ──binding──▶   LM6029ACW_595 : Adafruit_GFX
                              │
-                             ├─ /dev/spidev0.0 ─────────▶ SPI0 (data piksel)
+                             ├─ /dev/spidev* ──────────▶ SPI (data piksel)
+                             │   (auto: 0.0 Pi / 3.0 Orange Pi)
                              └─ bit kontrol 74HC595 ───▶ RD / WR / RS / RES / CS / LED
 ```
 
