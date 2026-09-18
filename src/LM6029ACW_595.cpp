@@ -211,11 +211,17 @@ void LM6029ACW_595::drawPixel(int16_t x, int16_t y, uint16_t color) {
 // Cetak string pada posisi (x, y) memakai font yang sedang aktif.
 // Untuk font default 5x7, y = baris atas teks.
 // Untuk font Adafruit kustom, y = baseline teks.
+//
+// PENTING: warna teks/latar TIDAK dipaksa di sini — pakai setTextColor() yang
+// sedang aktif, sama seperti print(). Sebelumnya ada baris `setTextColor(1)`
+// yang menimpa pilihan pemanggil, sehingga teks inversi `setTextColor(0, 1)`
+// (glyph 0 di atas latar 1) ikut digambar 1 di atas latar 1 → tidak terlihat
+// di panel. Bug ini tidak muncul di examples/test_gfx.js karena contoh itu
+// memakai setCursor()+print(), bukan printText().
 void LM6029ACW_595::printText(const char* str, int16_t x, int16_t y, uint8_t size) {
     if (str == NULL) return;
 
     setTextSize(size);
-    setTextColor(1); // piksel nyala, background transparan (bg == fg)
     setCursor(x, y);
 
     for (const char* p = str; *p != '\0'; ++p) {
